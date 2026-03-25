@@ -73,7 +73,7 @@
     },
     "apps/tui": {
       "name": "@maria_rcks/t1code",
-      "version": "0.0.8",
+      "version": "0.0.10",
       "bin": {
         "t1code": "./bin/t1code.js",
       },
