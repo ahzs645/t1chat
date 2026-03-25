@@ -56,7 +56,7 @@ describe("resolveTuiResponsiveLayout", () => {
   it("forces the sidebar closed in very narrow terminals", () => {
     expect(
       resolveTuiResponsiveLayout({
-        viewportColumns: 86,
+        viewportColumns: 78,
         sidebarCollapsedPreference: false,
       }),
     ).toEqual(
@@ -69,6 +69,23 @@ describe("resolveTuiResponsiveLayout", () => {
         showComposerModeLabels: true,
         showComposerModelLabel: true,
         showComposerTraitsLabel: true,
+      }),
+    );
+  });
+
+  it("keeps the sidebar open at widths that still have room for the full layout", () => {
+    expect(
+      resolveTuiResponsiveLayout({
+        viewportColumns: 86,
+        sidebarCollapsedPreference: false,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        showSidebarToggle: true,
+        sidebarForcedCollapsed: false,
+        sidebarCollapsed: false,
+        showSidebar: true,
+        sidebarTitle: "T1 Code",
       }),
     );
   });
