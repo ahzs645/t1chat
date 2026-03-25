@@ -3470,24 +3470,24 @@ export function App({
     scheduleDeferredComposerSync({
       state: deferredComposerSyncRef.current,
       onSync: () => {
-      const nextValue = composerRef.current?.plainText ?? "";
-      setComposer(nextValue);
-      if (activePendingProgress?.activeQuestion) {
-        const questionId = activePendingProgress.activeQuestion.id;
-        const requestId = activePendingUserInput?.requestId;
-        if (requestId) {
-          setPendingUserInputAnswersByRequestId((current) => ({
-            ...current,
-            [requestId]: {
-              ...current[requestId],
-              [questionId]: {
-                ...current[requestId]?.[questionId],
-                customAnswer: nextValue,
+        const nextValue = composerRef.current?.plainText ?? "";
+        setComposer(nextValue);
+        if (activePendingProgress?.activeQuestion) {
+          const questionId = activePendingProgress.activeQuestion.id;
+          const requestId = activePendingUserInput?.requestId;
+          if (requestId) {
+            setPendingUserInputAnswersByRequestId((current) => ({
+              ...current,
+              [requestId]: {
+                ...current[requestId],
+                [questionId]: {
+                  ...current[requestId]?.[questionId],
+                  customAnswer: nextValue,
+                },
               },
-            },
-          }));
+            }));
+          }
         }
-      }
       },
     });
   }
@@ -3694,8 +3694,9 @@ export function App({
   }
 
   useEffect(() => {
+    const deferredComposerSync = deferredComposerSyncRef.current;
     return () => {
-      invalidateDeferredComposerSync(deferredComposerSyncRef.current);
+      invalidateDeferredComposerSync(deferredComposerSync);
     };
   }, []);
 
@@ -6209,8 +6210,7 @@ export function App({
                 composer.trim().length === 0
                   ? "Ultrathink:\n"
                   : applyClaudePromptEffortPrefix(composer, "ultrathink");
-              setComposer(nextPrompt);
-              setComposerResetKey((current) => current + 1);
+              resetComposerTextarea(nextPrompt);
               setStatus("traits");
               return;
             }
