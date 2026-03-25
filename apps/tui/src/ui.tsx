@@ -107,6 +107,7 @@ import packageJson from "../package.json";
 import { resolveTuiPaths } from "./config";
 import { resolveComposerPrimaryAction } from "./composerAction";
 import { parseStandaloneComposerModeCommand } from "./composerCommands";
+import { formatReasoningEffortLabel, truncateToolbarLabel } from "./composerControlLabels";
 import {
   resolveComposerSubmission,
   resolveImageAttachmentFromPath,
@@ -884,21 +885,19 @@ function modelControlLabel(provider: ProviderKind, model: string): string {
     .trim();
 }
 
-function formatReasoningEffortLabel(effort: string): string {
-  if (effort === "xhigh") return "Extra High";
-  if (effort === "max") return "Max";
-  if (effort === "ultrathink") return "Ultrathink";
-  return effort.slice(0, 1).toUpperCase() + effort.slice(1);
-}
-
 function getCodexTraits(modelOptions: ProviderModelOptions | null | undefined): {
-  effort: CodexReasoningEffort;
+  effort: CodexReasoningEffort | "none";
   fastModeEnabled: boolean;
 } {
   const defaultReasoningEffort = getDefaultReasoningEffort("codex");
+  const rawReasoningEffort =
+    typeof modelOptions?.codex?.reasoningEffort === "string"
+      ? (modelOptions.codex.reasoningEffort as CodexReasoningEffort | "none")
+      : null;
   return {
     effort:
-      resolveReasoningEffortForProvider("codex", modelOptions?.codex?.reasoningEffort) ??
+      resolveReasoningEffortForProvider("codex", rawReasoningEffort) ??
+      (rawReasoningEffort === "none" ? "none" : null) ??
       defaultReasoningEffort,
     fastModeEnabled: modelOptions?.codex?.fastMode === true,
   };
@@ -8596,7 +8595,7 @@ export function App({
                                 icon={composerTraitsIcon(draftProvider)}
                                 label={
                                   responsiveLayout.showComposerTraitsLabel
-                                    ? `${composerTraits} ▾`
+                                    ? truncateToolbarLabel(`${composerTraits} ▾`, 14)
                                     : undefined
                                 }
                                 compact={!responsiveLayout.showComposerTraitsLabel}
