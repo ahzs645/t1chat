@@ -1789,12 +1789,12 @@ function SectionLabel(props: {
       }}
     >
       <text content={props.label} style={{ fg: PALETTE.subtle, flexGrow: 1 }} />
-      <box style={{ flexDirection: "row", gap: 1 }}>
+      <box style={{ flexDirection: "row", gap: 0 }}>
         {(props.actions ?? []).map((action) => (
           <IconButton
             key={`${props.label}:${action.icon}`}
             icon={action.icon}
-            width={1}
+            width={3}
             {...(action.active !== undefined ? { active: action.active } : {})}
             onPress={action.onPress}
           />
@@ -1861,6 +1861,8 @@ function ToolbarButton(props: {
   compact?: boolean;
   surface?: "default" | "inset";
   chrome?: "default" | "bare";
+  width?: number;
+  justifyContent?: "center" | "flex-start" | "flex-end";
   onPress: (event?: SidebarMouseEvent) => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -1898,15 +1900,15 @@ function ToolbarButton(props: {
         minHeight: 1,
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: "center",
+        justifyContent: props.justifyContent ?? "center",
         flexShrink: 0,
         ...(isBare
-          ? { width: 3 }
+          ? { width: props.width ?? 3 }
           : props.label
             ? {}
             : props.compact
-              ? { width: 3, paddingLeft: 0, paddingRight: 0 }
-              : { width: 4 }),
+              ? { width: props.width ?? 3, paddingLeft: 0, paddingRight: 0 }
+              : { width: props.width ?? 4 }),
       }}
     >
       {props.icon ? (
@@ -6871,7 +6873,7 @@ export function App({
                     />
                     <IconButton
                       icon="+"
-                      width={1}
+                      width={3}
                       onPress={() => {
                         closeSidebarContextMenu();
                         if (selectedThreadIds.size > 0) {
@@ -7121,6 +7123,8 @@ export function App({
                   active={overlayMenu === "git-actions"}
                   disabled={!gitCwd || !isGitRepo}
                   chrome="bare"
+                  width={4}
+                  justifyContent="flex-end"
                   iconColor={
                     gitActionBusy
                       ? PALETTE.text
@@ -7135,6 +7139,8 @@ export function App({
                   active={diffOpen}
                   disabled={!isGitRepo}
                   chrome="bare"
+                  width={4}
+                  justifyContent="flex-start"
                   iconColor={PALETTE.muted}
                   onPress={toggleDiffView}
                 />
