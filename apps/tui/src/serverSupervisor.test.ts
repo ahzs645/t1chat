@@ -143,7 +143,7 @@ describe("startServerSupervisor", () => {
     expect(children[0]?.kill).toHaveBeenCalledWith("SIGTERM");
   });
 
-  it("uses the current runtime for packaged production server launches", async () => {
+  it("uses Bun for packaged production server launches", async () => {
     const spawnImpl = vi.fn(() => new FakeChildProcess() as unknown as ChildProcess);
 
     const server = await startServerSupervisor(
@@ -158,7 +158,7 @@ describe("startServerSupervisor", () => {
       },
     );
 
-    expect((spawnImpl as any).mock.calls[0][0]).toBe(process.execPath);
+    expect((spawnImpl as any).mock.calls[0][0]).toBe("bun");
     expect((spawnImpl as any).mock.calls[0][1][0]).toContain("/apps/server/dist/index.mjs");
 
     server.stop();
@@ -180,7 +180,7 @@ describe("startServerSupervisor", () => {
       },
     );
 
-    expect((spawnImpl as any).mock.calls[0][0]).toBe(process.execPath);
+    expect((spawnImpl as any).mock.calls[0][0]).toBe("bun");
     expect((spawnImpl as any).mock.calls[0][1][0]).toContain("/server/index.js");
 
     server.stop();

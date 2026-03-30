@@ -289,6 +289,23 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     });
   }
 
+  function logIncomingRequest(request: WebSocketRequest) {
+    if (!logWebSocketEvents) return;
+    logger.event("incoming request", {
+      id: request.id,
+      method: request.body._tag,
+    });
+  }
+
+  function logOutgoingResponse(response: WsResponseMessage) {
+    if (!logWebSocketEvents || "type" in response) return;
+    logger.event("outgoing response", {
+      id: response.id,
+      ok: "result" in response,
+      ...("error" in response && response.error ? { error: response.error.message } : {}),
+    });
+  }
+
   const pushBus = yield* makeServerPushBus({
     clients,
     logOutgoingPush,
@@ -920,24 +937,31 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
     const request = decodeWebSocketRequest(messageText);
     if (Result.isFailure(request)) {
-      return yield* sendWsResponse({
+      const response = {
         id: "unknown",
         error: { message: `Invalid request format: ${formatSchemaError(request.failure)}` },
-      });
+      } satisfies WsResponseMessage;
+      logOutgoingResponse(response);
+      return yield* sendWsResponse(response);
     }
+    logIncomingRequest(request.success);
 
     const result = yield* Effect.exit(routeRequest(ws, request.success));
     if (Exit.isFailure(result)) {
-      return yield* sendWsResponse({
+      const response = {
         id: request.success.id,
         error: { message: Cause.pretty(result.cause) },
-      });
+      } satisfies WsResponseMessage;
+      logOutgoingResponse(response);
+      return yield* sendWsResponse(response);
     }
 
-    return yield* sendWsResponse({
+    const response = {
       id: request.success.id,
       result: result.value,
-    });
+    } satisfies WsResponseMessage;
+    logOutgoingResponse(response);
+    return yield* sendWsResponse(response);
   });
 
   httpServer.on("upgrade", (request, socket, head) => {

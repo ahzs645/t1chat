@@ -83,11 +83,11 @@ const SERVER_APP_DIR = path.resolve(REPO_ROOT, "apps/server");
 const BUNDLED_SERVER_ENTRY = path.resolve(THIS_DIR, "server", "index.js");
 
 function resolveBundledServerCommand(env: NodeJS.ProcessEnv): string {
-  const configured = env.T1CODE_NODE_BIN?.trim();
+  const configured = env.T1CODE_BUN_BIN?.trim() || env.T1CODE_NODE_BIN?.trim();
   if (configured) {
     return configured;
   }
-  return process.execPath;
+  return process.versions.bun ? process.execPath : "bun";
 }
 
 function readBooleanEnv(value: string | undefined): boolean | undefined {

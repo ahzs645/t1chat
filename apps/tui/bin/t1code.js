@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,8 @@ function printError(error) {
 }
 
 if (process.versions.bun === undefined) {
-  const child = spawn("bun", [entryPath, ...process.argv.slice(2)], {
+  const bunBin = process.env.T1CODE_BUN_BIN?.trim() || "bun";
+  const child = spawn(bunBin, [entryPath, ...process.argv.slice(2)], {
     stdio: "inherit",
     env: process.env,
   });

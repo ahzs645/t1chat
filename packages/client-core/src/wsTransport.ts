@@ -29,12 +29,12 @@ type TransportState = "connecting" | "open" | "reconnecting" | "closed" | "dispo
 
 interface WebSocketLike {
   readonly readyState: number;
+  onopen: ((...args: any[]) => unknown) | null;
+  onmessage: ((...args: any[]) => unknown) | null;
+  onclose: ((...args: any[]) => unknown) | null;
+  onerror: ((...args: any[]) => unknown) | null;
   close(): void;
   send(data: string): void;
-  addEventListener(type: "open", listener: () => void): void;
-  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
-  addEventListener(type: "close", listener: () => void): void;
-  addEventListener(type: "error", listener: (event: { type: string }) => void): void;
 }
 
 type WebSocketCtor = new (url: string) => WebSocketLike;
@@ -197,16 +197,16 @@ export class WsTransport {
     this.state = this.reconnectAttempt > 0 ? "reconnecting" : "connecting";
     const ws = new this.WebSocketCtor(this.url);
 
-    ws.addEventListener("open", () => {
+    ws.onopen = () => {
       this.ws = ws;
       this.state = "open";
       this.reconnectAttempt = 0;
       this.flushQueue();
-    });
-    ws.addEventListener("message", (event) => {
+    };
+    ws.onmessage = (event) => {
       this.handleMessage(event.data);
-    });
-    ws.addEventListener("close", () => {
+    };
+    ws.onclose = () => {
       if (this.ws === ws) {
         this.ws = null;
         this.outboundQueue.length = 0;
@@ -224,10 +224,10 @@ export class WsTransport {
       }
       this.state = "closed";
       this.scheduleReconnect();
-    });
-    ws.addEventListener("error", (event) => {
+    };
+    ws.onerror = (event) => {
       this.onWarning("WebSocket connection error", { type: event.type, url: this.url });
-    });
+    };
   }
 
   private handleMessage(raw: unknown) {
