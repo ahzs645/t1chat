@@ -2667,6 +2667,7 @@ export function App({
   const [snapshot, setSnapshot] = useState<OrchestrationReadModel | null>(null);
   const [serverConfig, setServerConfig] = useState<TuiServerConfig>(null);
   const [, setStatus] = useState("Booting");
+  const [startupIssue, setStartupIssue] = useState<string | null>(null);
   const [mainView, setMainView] = useState<MainView>("thread");
   const [composer, setComposer] = useState("");
   const [composerAttachments, setComposerAttachments] = useState<DraftComposerImageAttachment[]>(
@@ -2858,234 +2859,243 @@ export function App({
     let cleanup: (() => void) | undefined;
 
     void (async () => {
-      logger.log("app.boot", {
-        cwd: process.cwd(),
-        homeDir: paths.homeDir,
-        configHomeDir: paths.configHomeDir,
-        logPath: paths.logPath,
-      });
-      const prefs = await readPrefs(paths);
-      logger.log("prefs.loaded", prefs as Record<string, unknown>);
-      if (disposed) return;
-      if (prefs.selectedProjectId) {
-        selectedProjectIdRef.current = prefs.selectedProjectId;
-        setSelectedProjectId(prefs.selectedProjectId);
-      }
-      if (prefs.selectedThreadId) {
-        selectedThreadIdRef.current = prefs.selectedThreadId;
-        setSelectedThreadId(prefs.selectedThreadId);
-      }
-      if (prefs.expandedProjectIds?.length) {
-        setExpandedProjectIds(new Set(prefs.expandedProjectIds));
-      }
-      if (prefs.locallyUnreadThreadIds?.length) {
-        setLocallyUnreadThreadIds(new Set(prefs.locallyUnreadThreadIds));
-      }
-      if (prefs.threadLastVisitedAtById) {
-        setLocallyVisitedThreads(prefs.threadLastVisitedAtById);
-      }
-      if (prefs.draftThreadsByProjectId) {
-        setDraftThreadsByProjectId(
-          Object.fromEntries(
-            Object.entries(prefs.draftThreadsByProjectId).map(([projectId, draftThread]) => [
-              projectId,
-              {
-                id: draftThread.id,
-                projectId: draftThread.projectId,
-                branch: draftThread.branch ?? null,
-                worktreePath: draftThread.worktreePath ?? null,
-                envMode: draftThread.envMode ?? "local",
-              },
-            ]),
-          ),
-        );
-      }
-      if (prefs.composerDraftsByThreadId) {
-        setComposerDraftsByThreadId(
-          Object.fromEntries(
-            Object.entries(prefs.composerDraftsByThreadId).map(([threadId, draft]) => [
-              threadId,
-              {
-                text: draft.text,
-                mentions: (draft.mentions ?? []).map(cloneComposerMention),
-                attachments: draft.attachments.map((attachment) => ({ ...attachment })),
-              },
-            ]),
-          ),
-        );
-      }
-      if (prefs.mainView === "settings" || prefs.mainView === "keybindings") {
-        setMainView(prefs.mainView);
-        setFocusArea("settings");
-      }
-      if (prefs.appSettings) {
-        setAppSettings(normalizeAppSettings({ ...DEFAULT_APP_SETTINGS, ...prefs.appSettings }));
-        setOpenInstallProviders({
-          codex: Boolean(prefs.appSettings.codexBinaryPath || prefs.appSettings.codexHomePath),
-          claudeAgent: Boolean(prefs.appSettings.claudeBinaryPath),
+      try {
+        logger.log("app.boot", {
+          cwd: process.cwd(),
+          homeDir: paths.homeDir,
+          configHomeDir: paths.configHomeDir,
+          logPath: paths.logPath,
         });
-      }
-      const persistedProvider = normalizePersistedProvider(prefs.draftProvider);
-      const nextProvider = persistedProvider ?? "codex";
-      setDraftProvider(nextProvider);
-      setDraftModel(resolvePersistedModel(nextProvider, prefs.draftModel));
-      setDraftModelOptions(prefs.draftModelOptions);
-      setDraftRuntimeMode(normalizePersistedRuntimeMode(prefs.draftRuntimeMode) ?? "full-access");
-      setDraftInteractionMode(
-        normalizePersistedInteractionMode(prefs.draftInteractionMode) ?? "default",
-      );
-      setDiffOpen(Boolean(prefs.diffOpen));
-      setDiffView(prefs.diffView ?? "unified");
-      setPrefsReady(true);
-
-      const attachedServer = resolveAttachedServerConnection();
-      const server = attachedServer
-        ? {
-            wsUrl: attachedServer.wsUrl,
-            stop: () => undefined,
-          }
-        : await startServerSupervisor({
-            homeDir: paths.homeDir,
-            logPath: paths.logPath,
-            onExit: ({ code, signal }) => {
-              if (disposed) return;
-              logger.log("server.onExit", { code, signal: signal ?? null });
-              setStatus("Reconnecting");
-            },
-            onRestart: ({ attempt }) => {
-              if (disposed) return;
-              logger.log("server.onRestart", { attempt });
-              setStatus("Restarting");
-            },
-            onLog: (event, details) => logger.log(event, details),
-          });
-      if (attachedServer) {
-        logger.log("server.attached", {
-          host: attachedServer.host,
-          port: attachedServer.port,
-        });
-      }
-      const transport = new WsTransport({
-        url: server.wsUrl,
-        onWarning: (message, details) => logger.log("ws.warning", { message, details }),
-      });
-      setServerHttpOrigin(resolveHttpOriginFromWsUrl(server.wsUrl));
-      const nativeBridge = createTransportNativeApi({ transport });
-      const nativeApi = nativeBridge.api;
-      logger.log("ws.connecting", { wsUrl: server.wsUrl });
-      let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-      let refreshInFlight = false;
-      let refreshAttempts = 0;
-
-      const scheduleRefreshRetry = (reason: string) => {
-        if (disposed || refreshTimer !== null) return;
-        refreshTimer = setTimeout(() => {
-          refreshTimer = null;
-          void refresh(`retry:${reason}`);
-        }, 1_000);
-        logger.log("snapshot.retryScheduled", { reason });
-      };
-
-      const refresh = async (reason: string) => {
-        if (disposed || refreshInFlight) return;
-        refreshInFlight = true;
-        try {
-          logger.log("snapshot.refreshStarted", { reason });
-          const nextSnapshot = await transport.request<OrchestrationReadModel>(
-            ORCHESTRATION_WS_METHODS.getSnapshot,
-            undefined,
-            { timeoutMs: 5_000 },
+        const prefs = await readPrefs(paths);
+        logger.log("prefs.loaded", prefs as Record<string, unknown>);
+        if (disposed) return;
+        setStartupIssue(null);
+        if (prefs.selectedProjectId) {
+          selectedProjectIdRef.current = prefs.selectedProjectId;
+          setSelectedProjectId(prefs.selectedProjectId);
+        }
+        if (prefs.selectedThreadId) {
+          selectedThreadIdRef.current = prefs.selectedThreadId;
+          setSelectedThreadId(prefs.selectedThreadId);
+        }
+        if (prefs.expandedProjectIds?.length) {
+          setExpandedProjectIds(new Set(prefs.expandedProjectIds));
+        }
+        if (prefs.locallyUnreadThreadIds?.length) {
+          setLocallyUnreadThreadIds(new Set(prefs.locallyUnreadThreadIds));
+        }
+        if (prefs.threadLastVisitedAtById) {
+          setLocallyVisitedThreads(prefs.threadLastVisitedAtById);
+        }
+        if (prefs.draftThreadsByProjectId) {
+          setDraftThreadsByProjectId(
+            Object.fromEntries(
+              Object.entries(prefs.draftThreadsByProjectId).map(([projectId, draftThread]) => [
+                projectId,
+                {
+                  id: draftThread.id,
+                  projectId: draftThread.projectId,
+                  branch: draftThread.branch ?? null,
+                  worktreePath: draftThread.worktreePath ?? null,
+                  envMode: draftThread.envMode ?? "local",
+                },
+              ]),
+            ),
           );
-          if (disposed) return;
-          refreshAttempts = 0;
-          setSnapshot(nextSnapshot);
-          logger.log("snapshot.refreshed", {
-            reason,
-            projectCount: nextSnapshot.projects.length,
-            threadCount: nextSnapshot.threads.length,
-          });
-          setStatus("Ready");
-        } catch (error) {
-          if (disposed) return;
-          refreshAttempts += 1;
-          logger.log("snapshot.refreshFailed", {
-            reason,
-            attempt: refreshAttempts,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          setStatus(refreshAttempts > 2 ? "Disconnected" : "Booting");
-          scheduleRefreshRetry(reason);
-        } finally {
-          refreshInFlight = false;
         }
-      };
-
-      setApi(nativeApi);
-      void nativeApi.server
-        .getConfig()
-        .then((config) => {
-          if (!disposed) {
-            setServerConfig(config);
-          }
-        })
-        .catch((error) => {
-          logger.log("serverConfig.loadFailed", {
-            error: error instanceof Error ? error.message : String(error),
+        if (prefs.composerDraftsByThreadId) {
+          setComposerDraftsByThreadId(
+            Object.fromEntries(
+              Object.entries(prefs.composerDraftsByThreadId).map(([threadId, draft]) => [
+                threadId,
+                {
+                  text: draft.text,
+                  mentions: (draft.mentions ?? []).map(cloneComposerMention),
+                  attachments: draft.attachments.map((attachment) => ({ ...attachment })),
+                },
+              ]),
+            ),
+          );
+        }
+        if (prefs.mainView === "settings" || prefs.mainView === "keybindings") {
+          setMainView(prefs.mainView);
+          setFocusArea("settings");
+        }
+        if (prefs.appSettings) {
+          setAppSettings(normalizeAppSettings({ ...DEFAULT_APP_SETTINGS, ...prefs.appSettings }));
+          setOpenInstallProviders({
+            codex: Boolean(prefs.appSettings.codexBinaryPath || prefs.appSettings.codexHomePath),
+            claudeAgent: Boolean(prefs.appSettings.claudeBinaryPath),
           });
-        });
-      await refresh("initial");
-      const unsubscribeWelcome = nativeBridge.events.onServerWelcome((payload) => {
-        logger.log("server.welcome", payload as Record<string, unknown>);
-        if (
-          payload.bootstrapProjectId &&
-          shouldApplyWelcomeBootstrapSelection({
-            hasHandledWelcomeBootstrap: handledWelcomeBootstrapRef.current,
-            currentSelectionId: selectedProjectIdRef.current,
-          })
-        ) {
-          selectedProjectIdRef.current = payload.bootstrapProjectId;
-          setSelectedProjectId(payload.bootstrapProjectId);
         }
-        if (
-          payload.bootstrapThreadId &&
-          shouldApplyWelcomeBootstrapSelection({
-            hasHandledWelcomeBootstrap: handledWelcomeBootstrapRef.current,
-            currentSelectionId: selectedThreadIdRef.current,
-          })
-        ) {
-          selectedThreadIdRef.current = payload.bootstrapThreadId;
-          setSelectedThreadId(payload.bootstrapThreadId);
-        }
-        handledWelcomeBootstrapRef.current = true;
-        void refresh("welcome");
-      });
-      const unsubscribe = nativeApi.orchestration.onDomainEvent(() => {
-        logger.log("orchestration.domainEvent");
-        void refresh("domain-event");
-      });
-      const unsubscribeServerConfig = nativeBridge.events.onServerConfigUpdated((payload) => {
-        setServerConfig((current) =>
-          current
-            ? {
-                ...current,
-                issues: payload.issues,
-                providers: payload.providers,
-              }
-            : current,
+        const persistedProvider = normalizePersistedProvider(prefs.draftProvider);
+        const nextProvider = persistedProvider ?? "codex";
+        setDraftProvider(nextProvider);
+        setDraftModel(resolvePersistedModel(nextProvider, prefs.draftModel));
+        setDraftModelOptions(prefs.draftModelOptions);
+        setDraftRuntimeMode(normalizePersistedRuntimeMode(prefs.draftRuntimeMode) ?? "full-access");
+        setDraftInteractionMode(
+          normalizePersistedInteractionMode(prefs.draftInteractionMode) ?? "default",
         );
-      });
+        setDiffOpen(Boolean(prefs.diffOpen));
+        setDiffView(prefs.diffView ?? "unified");
+        setPrefsReady(true);
 
-      cleanup = () => {
-        logger.log("app.cleanup");
-        if (refreshTimer !== null) {
-          clearTimeout(refreshTimer);
+        const attachedServer = resolveAttachedServerConnection();
+        const server = attachedServer
+          ? {
+              wsUrl: attachedServer.wsUrl,
+              stop: () => undefined,
+            }
+          : await startServerSupervisor({
+              homeDir: paths.homeDir,
+              logPath: paths.logPath,
+              onExit: ({ code, signal }) => {
+                if (disposed) return;
+                logger.log("server.onExit", { code, signal: signal ?? null });
+                setStatus("Reconnecting");
+              },
+              onRestart: ({ attempt }) => {
+                if (disposed) return;
+                logger.log("server.onRestart", { attempt });
+                setStatus("Restarting");
+              },
+              onLog: (event, details) => logger.log(event, details),
+            });
+        if (attachedServer) {
+          logger.log("server.attached", {
+            host: attachedServer.host,
+            port: attachedServer.port,
+          });
         }
-        unsubscribeWelcome();
-        unsubscribe();
-        unsubscribeServerConfig();
-        transport.dispose();
-        server.stop();
-      };
+        const transport = new WsTransport({
+          url: server.wsUrl,
+          onWarning: (message, details) => logger.log("ws.warning", { message, details }),
+        });
+        setServerHttpOrigin(resolveHttpOriginFromWsUrl(server.wsUrl));
+        const nativeBridge = createTransportNativeApi({ transport });
+        const nativeApi = nativeBridge.api;
+        logger.log("ws.connecting", { wsUrl: server.wsUrl });
+        let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+        let refreshInFlight = false;
+        let refreshAttempts = 0;
+
+        const scheduleRefreshRetry = (reason: string) => {
+          if (disposed || refreshTimer !== null) return;
+          refreshTimer = setTimeout(() => {
+            refreshTimer = null;
+            void refresh(`retry:${reason}`);
+          }, 1_000);
+          logger.log("snapshot.retryScheduled", { reason });
+        };
+
+        const refresh = async (reason: string) => {
+          if (disposed || refreshInFlight) return;
+          refreshInFlight = true;
+          try {
+            logger.log("snapshot.refreshStarted", { reason });
+            const nextSnapshot = await transport.request<OrchestrationReadModel>(
+              ORCHESTRATION_WS_METHODS.getSnapshot,
+              undefined,
+              { timeoutMs: 5_000 },
+            );
+            if (disposed) return;
+            refreshAttempts = 0;
+            setSnapshot(nextSnapshot);
+            logger.log("snapshot.refreshed", {
+              reason,
+              projectCount: nextSnapshot.projects.length,
+              threadCount: nextSnapshot.threads.length,
+            });
+            setStatus("Ready");
+          } catch (error) {
+            if (disposed) return;
+            refreshAttempts += 1;
+            logger.log("snapshot.refreshFailed", {
+              reason,
+              attempt: refreshAttempts,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            setStatus(refreshAttempts > 2 ? "Disconnected" : "Booting");
+            scheduleRefreshRetry(reason);
+          } finally {
+            refreshInFlight = false;
+          }
+        };
+
+        setApi(nativeApi);
+        void nativeApi.server
+          .getConfig()
+          .then((config) => {
+            if (!disposed) {
+              setServerConfig(config);
+            }
+          })
+          .catch((error) => {
+            logger.log("serverConfig.loadFailed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        await refresh("initial");
+        const unsubscribeWelcome = nativeBridge.events.onServerWelcome((payload) => {
+          logger.log("server.welcome", payload as Record<string, unknown>);
+          if (
+            payload.bootstrapProjectId &&
+            shouldApplyWelcomeBootstrapSelection({
+              hasHandledWelcomeBootstrap: handledWelcomeBootstrapRef.current,
+              currentSelectionId: selectedProjectIdRef.current,
+            })
+          ) {
+            selectedProjectIdRef.current = payload.bootstrapProjectId;
+            setSelectedProjectId(payload.bootstrapProjectId);
+          }
+          if (
+            payload.bootstrapThreadId &&
+            shouldApplyWelcomeBootstrapSelection({
+              hasHandledWelcomeBootstrap: handledWelcomeBootstrapRef.current,
+              currentSelectionId: selectedThreadIdRef.current,
+            })
+          ) {
+            selectedThreadIdRef.current = payload.bootstrapThreadId;
+            setSelectedThreadId(payload.bootstrapThreadId);
+          }
+          handledWelcomeBootstrapRef.current = true;
+          void refresh("welcome");
+        });
+        const unsubscribe = nativeApi.orchestration.onDomainEvent(() => {
+          logger.log("orchestration.domainEvent");
+          void refresh("domain-event");
+        });
+        const unsubscribeServerConfig = nativeBridge.events.onServerConfigUpdated((payload) => {
+          setServerConfig((current) =>
+            current
+              ? {
+                  ...current,
+                  issues: payload.issues,
+                  providers: payload.providers,
+                }
+              : current,
+          );
+        });
+
+        cleanup = () => {
+          logger.log("app.cleanup");
+          if (refreshTimer !== null) {
+            clearTimeout(refreshTimer);
+          }
+          unsubscribeWelcome();
+          unsubscribe();
+          unsubscribeServerConfig();
+          transport.dispose();
+          server.stop();
+        };
+      } catch (error) {
+        if (disposed) return;
+        const message = error instanceof Error ? error.message : String(error);
+        logger.log("app.bootFailed", { error: message });
+        setStartupIssue(message);
+        setStatus("Startup failed");
+      }
     })();
 
     return () => {
@@ -8809,6 +8819,18 @@ export function App({
                       }}
                     >
                       <text content="booting workspace" style={{ fg: PALETTE.muted }} />
+                    </box>
+                  ) : null}
+
+                  {startupIssue ? (
+                    <box
+                      style={{
+                        backgroundColor: PALETTE.surfaceWarn,
+                        padding: 2,
+                        marginBottom: 1,
+                      }}
+                    >
+                      <text content={startupIssue} style={{ fg: PALETTE.text }} />
                     </box>
                   ) : null}
 

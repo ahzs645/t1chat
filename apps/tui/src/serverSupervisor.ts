@@ -64,6 +64,18 @@ export interface ServerSupervisorDependencies {
   }) => Promise<void>;
 }
 
+function extractFatalStartupError(output: string): string | null {
+  const normalized = output.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (/\b(EACCES|EPERM)\b|permission denied/iu.test(normalized)) {
+    const firstLine = normalized.split(/\r?\n/u, 1)[0] ?? normalized;
+    return `T1Code could not start because a required path is not writable. ${firstLine}`;
+  }
+  return null;
+}
+
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const TUI_APP_DIR = path.resolve(THIS_DIR, "..");
 const REPO_ROOT = path.resolve(TUI_APP_DIR, "../..");
@@ -233,10 +245,13 @@ export async function startServerSupervisor(
   const restartDelayMs = options.restartDelayMs ?? 750;
   let child = null as ChildProcess | null;
   let stopped = false;
+  let ready = false;
+  let fatalStartupError: string | null = null;
   let restartAttempt = 0;
   let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
   const spawnChild = () => {
+    fatalStartupError = null;
     child = spawnImpl(
       command,
       [
@@ -269,18 +284,26 @@ export async function startServerSupervisor(
     });
 
     child.stdout?.on("data", (chunk) => {
-      options.onLog?.("server.stdout", { chunk: String(chunk).trimEnd() });
+      const output = String(chunk).trimEnd();
+      options.onLog?.("server.stdout", { chunk: output });
+      if (!ready) {
+        fatalStartupError = extractFatalStartupError(output) ?? fatalStartupError;
+      }
     });
 
     child.stderr?.on("data", (chunk) => {
-      options.onLog?.("server.stderr", { chunk: String(chunk).trimEnd() });
+      const output = String(chunk).trimEnd();
+      options.onLog?.("server.stderr", { chunk: output });
+      if (!ready) {
+        fatalStartupError = extractFatalStartupError(output) ?? fatalStartupError;
+      }
     });
 
     child.once("exit", (code, signal) => {
       options.onLog?.("server.exit", { code, signal: signal ?? null });
       events.emit("exit", code, signal);
       options.onExit?.({ code, signal });
-      if (stopped || !restartOnExit) {
+      if (stopped || !restartOnExit || (!ready && fatalStartupError)) {
         return;
       }
       restartAttempt += 1;
@@ -297,12 +320,20 @@ export async function startServerSupervisor(
   };
 
   spawnChild();
-  await waitUntilReady({
-    host,
-    port,
-    timeoutMs: options.readyTimeoutMs ?? 10_000,
-    process: child as ChildProcess,
-  });
+  try {
+    await waitUntilReady({
+      host,
+      port,
+      timeoutMs: options.readyTimeoutMs ?? 10_000,
+      process: child as ChildProcess,
+    });
+  } catch (error) {
+    if (fatalStartupError) {
+      throw new Error(fatalStartupError, { cause: error });
+    }
+    throw error;
+  }
+  ready = true;
   options.onLog?.("server.ready", { host, port });
 
   const stop = () => {

@@ -7,6 +7,8 @@ import { resolveAttachedServerConnection, startServerSupervisor } from "./server
 
 class FakeChildProcess extends EventEmitter {
   killed = false;
+  stdout = new EventEmitter();
+  stderr = new EventEmitter();
   kill = vi.fn((signal?: NodeJS.Signals | number) => {
     this.killed = true;
     return signal !== undefined;
@@ -247,6 +249,49 @@ describe("startServerSupervisor", () => {
     children[0]?.emit("exit", 0, "SIGTERM");
     await vi.advanceTimersByTimeAsync(25);
 
+    expect(spawnImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops restarting and surfaces a fatal startup permission error", async () => {
+    vi.useFakeTimers();
+    const children: FakeChildProcess[] = [];
+    const onRestart = vi.fn();
+    const spawnImpl = vi.fn(() => {
+      const child = new FakeChildProcess();
+      children.push(child);
+      return child as unknown as ChildProcess;
+    });
+
+    await expect(
+      startServerSupervisor(
+        {
+          homeDir: "/tmp/.t1",
+          port: 43117,
+          authToken: "token-7",
+          restartDelayMs: 25,
+          onRestart,
+        },
+        {
+          spawnImpl,
+          waitUntilReady: async ({ process }) => {
+            const child = process as unknown as FakeChildProcess & {
+              stdout?: EventEmitter;
+            };
+            child.stdout?.emit(
+              "data",
+              "Error: EACCES: permission denied, mkdir '/tmp/.t1/userdata/logs'",
+            );
+            child.emit("exit", 1, null);
+            throw new Error("Server exited before becoming ready (1).");
+          },
+          env: {},
+        },
+      ),
+    ).rejects.toThrow("T1Code could not start because a required path is not writable.");
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(onRestart).not.toHaveBeenCalled();
     expect(spawnImpl).toHaveBeenCalledTimes(1);
   });
 });
