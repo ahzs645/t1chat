@@ -2838,6 +2838,7 @@ export function App({
 
   const isChatMode = process.env.T1CODE_CHAT_MODE === "1";
   const [tempChatMode, setTempChatMode] = useState(false);
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
   const updateAppSettings = useCallback((patch: Partial<AppSettings>) => {
     setAppSettings((current) => normalizeAppSettings({ ...current, ...patch }));
   }, []);
@@ -7816,19 +7817,39 @@ export function App({
                 <text content="New Chat" style={{ fg: "#ffffff" }} />
               </box>
               <box
+                onMouseDown={() => setFocusArea("projects")}
                 style={{
                   height: 1,
                   flexDirection: "row",
                   alignItems: "center",
                   marginTop: 1,
                   paddingBottom: 0,
+                  position: "relative",
                 }}
               >
-                <text content="󰍉" style={{ fg: PALETTE.subtle, marginRight: 1 }} />
-                <text content="Search your threads..." style={{ fg: PALETTE.subtle }} />
+                <text content="󰍉" style={{ fg: sidebarSearchQuery ? PALETTE.muted : PALETTE.text, marginRight: 1 }} />
+                {sidebarSearchQuery ? null : (
+                  <text
+                    content="Search your threads..."
+                    style={{ fg: PALETTE.text, position: "absolute", left: 2 }}
+                  />
+                )}
+                <input
+                  value={sidebarSearchQuery}
+                  placeholder=""
+                  cursorColor={PALETTE.muted}
+                  onInput={(value) => setSidebarSearchQuery(value)}
+                  style={{
+                    flexGrow: 1,
+                    backgroundColor: sidebarBg,
+                    textColor: PALETTE.muted,
+                    focusedTextColor: PALETTE.muted,
+                    focusedBackgroundColor: sidebarBg,
+                  }}
+                />
               </box>
-              <box style={{ height: 1, marginTop: 0 }}>
-                <text content={"─".repeat(TUI_SIDEBAR_WIDTH - 4)} style={{ fg: PALETTE.divider }} />
+              <box style={{ height: 1, marginTop: 1 }}>
+                <text content={"─".repeat(TUI_SIDEBAR_WIDTH - 4)} style={{ fg: PALETTE.border }} />
               </box>
             </box>
           ) : null}
@@ -7883,6 +7904,10 @@ export function App({
                 return projectThreads.map((thread) => ({ ...thread, projectId: project.id }));
               });
               allThreads.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+              const searchLower = sidebarSearchQuery.toLowerCase().trim();
+              const filteredThreads = searchLower
+                ? allThreads.filter((t) => t.title.toLowerCase().includes(searchLower))
+                : allThreads;
 
               const now = new Date();
               const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -7899,7 +7924,7 @@ export function App({
                 { label: "Older", threads: [] },
               ];
 
-              for (const thread of allThreads) {
+              for (const thread of filteredThreads) {
                 const date = new Date(thread.updatedAt);
                 if (date >= todayStart) groups[0]!.threads.push(thread);
                 else if (date >= yesterdayStart) groups[1]!.threads.push(thread);
@@ -8248,29 +8273,54 @@ export function App({
         }}
       >
         {isChatMode && responsiveLayout.showSidebar ? (
-          <box style={{ height: 1, flexDirection: "row", backgroundColor: sidebarBg }}>
-            <text content="╭" style={{ fg: PALETTE.divider }} />
-            <text
-              content={"─".repeat(Math.max(0, (process.stdout.columns ?? 160) - responsiveLayout.sidebarWidth - 2))}
-              style={{ fg: PALETTE.divider }}
-            />
-            <text content="╮" style={{ fg: PALETTE.divider }} />
-          </box>
+          <>
+            {/* Row 1: top bar, full sidebar bg connects to sidebar */}
+            <box style={{ height: 1, backgroundColor: sidebarBg }} />
+            {/* Row 2: icons row, main bg on left, sidebar bg with icons on right */}
+            <box style={{ height: 1, flexDirection: "row", backgroundColor: PALETTE.main }}>
+              <box style={{ flexGrow: 1 }} />
+              <box style={{ flexDirection: "row", alignItems: "center", backgroundColor: sidebarBg, paddingLeft: 1, paddingRight: 1 }}>
+                <ToolbarButton
+                  icon="󰔟"
+                  compact
+                  chrome="bare"
+                  width={4}
+                  justifyContent="flex-end"
+                  iconColor={tempChatMode ? PALETTE.accent : PALETTE.muted}
+                  active={tempChatMode}
+                  onPress={() => setTempChatMode((prev) => !prev)}
+                />
+                <ToolbarButton
+                  icon="󰒓"
+                  compact
+                  chrome="bare"
+                  width={4}
+                  justifyContent="flex-end"
+                  iconColor={PALETTE.muted}
+                  onPress={() => {
+                    openMainView("settings");
+                  }}
+                />
+              </box>
+            </box>
+          </>
         ) : null}
+        {isChatMode && responsiveLayout.showSidebar ? null : (
         <box
           style={{
-            height: isChatMode && responsiveLayout.showSidebar ? 2 : 3,
+            height: 3,
             flexDirection: "row",
             alignItems: "center",
             paddingLeft: responsiveLayout.showSidebarToggle ? 1 : 2,
             paddingRight: 0,
-            paddingTop: isChatMode && responsiveLayout.showSidebar ? 0 : 1,
+            paddingTop: 0,
             paddingBottom: 1,
             backgroundColor: PALETTE.main,
             border: ["bottom"],
             borderColor: PALETTE.divider,
           }}
         >
+          {isChatMode && responsiveLayout.showSidebar ? null : (
           <box
             style={{
               flexDirection: "row",
@@ -8296,7 +8346,9 @@ export function App({
               <Badge label={activeProject.title} />
             ) : null}
           </box>
+          )}
 
+          {isChatMode && responsiveLayout.showSidebar ? null : (
           <box
             style={{
               flexDirection: "row",
@@ -8315,7 +8367,31 @@ export function App({
                 marginRight={1}
                 onPress={() => restoreDefaultSettings()}
               />
-            ) : mainView === "keybindings" ? null : isChatMode ? null : (
+            ) : mainView === "keybindings" ? null : isChatMode ? (
+              <>
+                <ToolbarButton
+                  icon="󰔟"
+                  compact
+                  chrome="bare"
+                  width={4}
+                  justifyContent="flex-end"
+                  iconColor={tempChatMode ? PALETTE.accent : PALETTE.muted}
+                  active={tempChatMode}
+                  onPress={() => setTempChatMode((prev) => !prev)}
+                />
+                <ToolbarButton
+                  icon="󰒓"
+                  compact
+                  chrome="bare"
+                  width={4}
+                  justifyContent="flex-end"
+                  iconColor={PALETTE.muted}
+                  onPress={() => {
+                    openMainView("settings");
+                  }}
+                />
+              </>
+            ) : (
               <>
                 <ToolbarButton
                   icon={gitActionBusy ? "󱦟" : "󰊢"}
@@ -8346,7 +8422,9 @@ export function App({
               </>
             )}
           </box>
+          )}
         </box>
+        )}
 
         <box style={{ flexDirection: "row", flexGrow: 1 }}>
           <box
@@ -9611,7 +9689,7 @@ export function App({
                     </box>
                   </box>
                 ) : (
-                  <box style={{ height: 1 }} />
+                  <box style={{ height: isChatMode ? 0 : 1 }} />
                 )}
 
                 <box
@@ -9642,7 +9720,7 @@ export function App({
                         ? PALETTE.composerBorder
                         : PALETTE.composerBorderMuted,
                     paddingTop: activePendingProgress ? 0 : 1,
-                    paddingBottom: 1,
+                    paddingBottom: isChatMode ? 0 : 1,
                     paddingLeft: 1,
                     paddingRight: 1,
                     flexDirection: "column",
@@ -9961,17 +10039,7 @@ export function App({
                       alignItems: "center",
                     }}
                   >
-                    {isChatMode ? (
-                      <box style={{ marginRight: 1 }}>
-                        <ToolbarButton
-                          icon="󰔟"
-                          label={responsiveLayout.showComposerModeLabels ? "Temp chat" : undefined}
-                          active={tempChatMode}
-                          compact={!responsiveLayout.showComposerModeLabels}
-                          onPress={() => setTempChatMode((prev) => !prev)}
-                        />
-                      </box>
-                    ) : null}
+                    {null}
                     {activePendingApproval ? (
                       <>
                         <box style={{ flexGrow: 1 }} />
@@ -10045,8 +10113,8 @@ export function App({
                               />
                             </>
                           ) : null}
-                          {responsiveLayout.showComposerDividers ? <FooterDivider /> : null}
-                          <ToolbarButton
+                          {!isChatMode && responsiveLayout.showComposerDividers ? <FooterDivider /> : null}
+                          {!isChatMode ? <ToolbarButton
                             icon={interactionIcon(draftInteractionMode)}
                             label={
                               responsiveLayout.showComposerModeLabels
@@ -10056,9 +10124,9 @@ export function App({
                             compact={!responsiveLayout.showComposerModeLabels}
                             active={draftInteractionMode === "plan"}
                             onPress={toggleInteractionMode}
-                          />
-                          {responsiveLayout.showComposerDividers ? <FooterDivider /> : null}
-                          <ToolbarButton
+                          /> : null}
+                          {!isChatMode && responsiveLayout.showComposerDividers ? <FooterDivider /> : null}
+                          {!isChatMode ? <ToolbarButton
                             icon={runtimeFooterIcon(draftRuntimeMode)}
                             label={
                               responsiveLayout.showComposerModeLabels
@@ -10068,7 +10136,7 @@ export function App({
                             compact={!responsiveLayout.showComposerModeLabels}
                             active={draftRuntimeMode === "approval-required"}
                             onPress={toggleRuntimeMode}
-                          />
+                          /> : null}
                         </box>
                         {activePendingProgress ? (
                           <>
