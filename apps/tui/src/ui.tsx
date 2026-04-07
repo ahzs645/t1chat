@@ -7848,8 +7848,8 @@ export function App({
                   }}
                 />
               </box>
-              <box style={{ height: 1, marginTop: 1 }}>
-                <text content={"─".repeat(TUI_SIDEBAR_WIDTH - 4)} style={{ fg: PALETTE.border }} />
+              <box style={{ height: 1, marginTop: 1, paddingLeft: 0, paddingRight: 0 }}>
+                <text content={"─".repeat(TUI_SIDEBAR_WIDTH - 2)} style={{ fg: PALETTE.text }} />
               </box>
             </box>
           ) : null}
@@ -7861,6 +7861,7 @@ export function App({
               ...themedScrollboxStyle(sidebarBg),
               paddingLeft: 1,
               paddingRight: 1,
+              paddingTop: isChatMode ? 1 : 0,
             }}
           >
             {isChatMode ? null : <SectionLabel
@@ -8302,6 +8303,11 @@ export function App({
                   }}
                 />
               </box>
+            </box>
+            {/* Row 3: bottom padding, sidebar bg only on right to match icon area */}
+            <box style={{ height: 1, flexDirection: "row", backgroundColor: PALETTE.main }}>
+              <box style={{ flexGrow: 1 }} />
+              <box style={{ width: 10, backgroundColor: sidebarBg }} />
             </box>
           </>
         ) : null}
