@@ -194,6 +194,7 @@ import {
   shouldClearPendingCreatedThread,
 } from "./threadSelection";
 import { resolveWorkEntryIcon } from "./workEntryIcons";
+import { createProfile, PROFILE_ICON_OPTIONS } from "./profiles";
 
 type FocusArea =
   | "projects"
@@ -2839,6 +2840,16 @@ export function App({
   const isChatMode = process.env.T1CODE_CHAT_MODE === "1";
   const [tempChatMode, setTempChatMode] = useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
+  const [chatProfiles, setChatProfiles] = useState<import("./profiles").Profile[]>([
+    { id: "default", name: "Default", icon: "󰭹" },
+  ]);
+  const [activeProfileId, setActiveProfileId] = useState("default");
+  const [threadProfileMap, setThreadProfileMap] = useState<Record<string, string>>({});
+  const [showProfileCreate, setShowProfileCreate] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("");
+  const [newProfileIconIndex, setNewProfileIconIndex] = useState(0);
+  const [profileNameFocused, setProfileNameFocused] = useState(false);
+  const [profileIconFocused, setProfileIconFocused] = useState(false);
   const updateAppSettings = useCallback((patch: Partial<AppSettings>) => {
     setAppSettings((current) => normalizeAppSettings({ ...current, ...patch }));
   }, []);
@@ -5784,6 +5795,9 @@ export function App({
     setExpandedProjectIds((current) => ensureProjectExpanded(current, projectId));
     setFocusArea("composer");
     setStatus("New thread");
+    if (isChatMode) {
+      setThreadProfileMap((current) => ({ ...current, [existingDraft.id]: activeProfileId }));
+    }
     setTimeout(() => {
       composerRef.current?.focus();
     }, 0);
@@ -7905,10 +7919,15 @@ export function App({
                 return projectThreads.map((thread) => ({ ...thread, projectId: project.id }));
               });
               allThreads.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+              const profileThreads = allThreads.filter((t) => {
+                const threadProfile = threadProfileMap[t.id];
+                if (!threadProfile) return activeProfileId === "default";
+                return threadProfile === activeProfileId;
+              });
               const searchLower = sidebarSearchQuery.toLowerCase().trim();
               const filteredThreads = searchLower
-                ? allThreads.filter((t) => t.title.toLowerCase().includes(searchLower))
-                : allThreads;
+                ? profileThreads.filter((t) => t.title.toLowerCase().includes(searchLower))
+                : profileThreads;
 
               const now = new Date();
               const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -8210,6 +8229,154 @@ export function App({
             }) : null}
           </scrollbox>
 
+          {isChatMode ? (
+            <box
+              style={{
+                paddingLeft: 1,
+                paddingRight: 1,
+                paddingTop: 1,
+                paddingBottom: 1,
+                flexDirection: "column",
+                position: "relative",
+              }}
+            >
+              {showProfileCreate ? (
+                <box
+                  style={{
+                    position: "absolute",
+                    bottom: 4,
+                    left: 0,
+                    right: 0,
+                    backgroundColor: RGBA.fromHex("#eaa7cb"),
+                    border: ["top"],
+                    borderColor: PALETTE.divider,
+                    flexDirection: "column",
+                    padding: 1,
+                    zIndex: 100,
+                  }}
+                >
+                  <text content="Create a Profile" style={{ fg: PALETTE.text, marginBottom: 0 }} />
+                  <text content="Profiles have separate threads" style={{ fg: PALETTE.subtle, marginBottom: 1 }} />
+                  <box style={{ height: 3, flexDirection: "row", marginBottom: 1 }}>
+                    <box
+                      onMouseDown={() => {
+                        setNewProfileIconIndex((i) => (i > 0 ? i - 1 : PROFILE_ICON_OPTIONS.length - 1));
+                        setProfileIconFocused(true);
+                        setProfileNameFocused(false);
+                      }}
+                      style={{
+                        border: true,
+                        borderStyle: "rounded",
+                        borderColor: profileIconFocused ? RGBA.fromHex("#db2777") : PALETTE.border,
+                        paddingLeft: 1,
+                        paddingRight: 1,
+                        marginRight: 1,
+                        backgroundColor: RGBA.fromHex("#eaa7cb"),
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
+                    >
+                      <text
+                        content={PROFILE_ICON_OPTIONS[newProfileIconIndex]?.icon ?? "󰭹"}
+                        style={{ fg: PALETTE.text }}
+                      />
+                    </box>
+                    <box
+                      onMouseDown={() => { setProfileNameFocused(true); setProfileIconFocused(false); }}
+                      style={{ flexGrow: 1, border: true, borderStyle: "rounded", borderColor: profileNameFocused ? RGBA.fromHex("#db2777") : PALETTE.border, backgroundColor: RGBA.fromHex("#eaa7cb"), justifyContent: "center", paddingLeft: 1 }}
+                    >
+                      <input
+                        value={newProfileName}
+                        placeholder="Profile name"
+                        cursorColor={PALETTE.text}
+                        onInput={(value) => {
+                          setNewProfileName(value.slice(0, 50));
+                          setProfileNameFocused(true);
+                        }}
+                        style={{
+                          flexGrow: 1,
+                          backgroundColor: RGBA.fromHex("#eaa7cb"),
+                          textColor: PALETTE.text,
+                          focusedTextColor: PALETTE.text,
+                          focusedBackgroundColor: RGBA.fromHex("#eaa7cb"),
+                        }}
+                      />
+                    </box>
+                  </box>
+                  <box
+                    onMouseDown={() => {
+                      if (newProfileName.trim()) {
+                        const icon = PROFILE_ICON_OPTIONS[newProfileIconIndex]?.icon ?? "󰭹";
+                        const profile = createProfile(newProfileName.trim(), icon);
+                        setChatProfiles((prev) => [...prev, profile]);
+                        setActiveProfileId(profile.id);
+                        setNewProfileName("");
+                        setNewProfileIconIndex(0);
+                        setProfileNameFocused(false);
+                        setProfileIconFocused(false);
+                        setShowProfileCreate(false);
+                      }
+                    }}
+                    style={{
+                      backgroundColor: RGBA.fromHex(newProfileName.trim() ? "#e33f86" : "#f19dc5"),
+                      height: 1,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <text content="Create Profile" style={{ fg: newProfileName.trim() ? "#ffffff" : "#ffffff80" }} />
+                  </box>
+                </box>
+              ) : null}
+              <box style={{ height: 3, flexDirection: "row", alignItems: "center" }}>
+                <box style={{ flexGrow: 1, flexDirection: "row", justifyContent: "center", alignItems: "center" }}>
+                  {chatProfiles.map((profile) => (
+                    <box
+                      key={profile.id}
+                      onMouseDown={() => setActiveProfileId(profile.id)}
+                      style={{
+                        marginRight: 1,
+                        width: 3,
+                        height: 3,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        backgroundColor:
+                          profile.id === activeProfileId ? PALETTE.controlActive : "transparent",
+                      }}
+                    >
+                      <text
+                        content={profile.icon}
+                        style={{
+                          fg: profile.id === activeProfileId ? PALETTE.text : PALETTE.muted,
+                        }}
+                      />
+                    </box>
+                  ))}
+                </box>
+                <box
+                  onMouseDown={() => {
+                    setShowProfileCreate((v) => !v);
+                    if (showProfileCreate) {
+                      setNewProfileName("");
+                      setNewProfileIconIndex(0);
+                      setProfileNameFocused(false);
+                    }
+                  }}
+                  style={{
+                    width: 3,
+                    height: 3,
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  <text
+                    content={showProfileCreate ? "✕" : "󰙃"}
+                    style={{ fg: PALETTE.muted }}
+                  />
+                </box>
+              </box>
+            </box>
+          ) : (
           <box
             style={{
               paddingLeft: 1,
@@ -8263,6 +8430,7 @@ export function App({
               />
             </SidebarRow>
           </box>
+          )}
         </box>
       ) : null}
 
@@ -9238,7 +9406,7 @@ export function App({
                         )}
                       </box>
 
-                      <box style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", marginBottom: 2 }}>
+                      <box style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", marginBottom: 1 }}>
                         {[
                           { icon: "󰛕", label: "Create" },
                           { icon: "󰎕", label: "Explore" },
@@ -9279,8 +9447,9 @@ export function App({
                               borderColor: PALETTE.divider,
                               paddingTop: 0,
                               paddingBottom: 0,
-                              height: 2,
-                              alignItems: "center",
+                              height: i === 0 ? 1 : 2,
+                              alignItems: "flex-start",
+                              justifyContent: "center",
                               width: "100%",
                             }}
                           >
